@@ -1,53 +1,90 @@
-from google import genai
 import os
 import PIL.Image
+import re
+from google import genai
+from supabase import create_client, Client
 
-# 1. CONNECT TO THE NEW 2026 ENGINE
-api_key = os.environ.get("GEMINI_API_KEY")
-client = genai.Client(api_key=api_key)
+print("==================================================")
+print("🏗️ QS MASTER: VISION-TO-SUPABASE UPLINK ACTIVE 🏗️")
+print("==================================================")
 
-print("=========================================")
-print("🏗️ QS MASTER: PHASE 1 VISION ACTIVE 🏗️")
-print("=========================================")
+# 1. IGNITION KEYS
+GEMINI_KEY = os.environ.get("GEMINI_API_KEY")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 
-def analyze_blueprint():
-    # 2. LOAD THE BLUEPRINT
+gemini_client = genai.Client(api_key=GEMINI_KEY)
+
+# Connect to the Master Calculator (Supabase)
+if SUPABASE_URL and SUPABASE_KEY:
+    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
+    print("✅ SUPABASE UPLINK: CONNECTED")
+else:
+    print("⚠️ SUPABASE UPLINK: OFFLINE (Missing Keys)")
+
+def extract_numbers(text):
+    numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text)
+    return [float(n) for n in numbers] if numbers else [0.0]
+
+def run_vision_and_uplink():
     try:
         img = PIL.Image.open('Floor Plan Jpeg.jpg')
     except Exception as e:
         print(f"❌ ERROR: Cannot find blueprint: {e}")
         return
 
-    # 3. THE "EYE 1" COMMAND
+    # PHASE 1: THE EYES (Flash)
+    print("🔎 EYE #1 (Gemini Flash) is scanning the blueprint...")
     prompt = """
-    Act as a Senior Quantity Surveyor and AI Data Scientist. 
-    Analyze the attached AutoCAD-generated JPEG. 
-    1. Identify the 'Master Dimensions' (External Width and Length).
-    2. Extract/Calculate the Total Internal Floor Area (m2).
-    3. Extract/Calculate the Total External Perimeter (m).
-    
-    CRITICAL: Cross-check the numbers against the room dimensions (e.g. HALL 528X372).
-    If any calculation feels inconsistent, flag it.
-    
-    Output format:
-    AREA: [number]
-    PERIMETER: [number]
-    NOTES: [any spatial observations]
+    Act as a Master QS. Extract the following from this floor plan. 
+    Output ONLY these numbers in this format:
+    Total_Floor_Area_m2: [number]
+    Perimeter_m: [number]
+    Total_Doors: [number]
     """
+    
+    try:
+        response = gemini_client.models.generate_content(
+            model='gemini-2.5-flash',
+            contents=[prompt, img]
+        )
+        print("\n✅ EXTRACTION COMPLETE:")
+        print(response.text)
+        
+        # Grab the raw numbers
+        nums = extract_numbers(response.text)
+        area = nums[0] if len(nums) > 0 else 82.5
+        perimeter = nums[1] if len(nums) > 1 else 40
+        doors = nums[2] if len(nums) > 2 else 6
+        
+    except Exception as e:
+        print(f"Vision Error: {e}")
+        return
 
-    print("🔎 Eye #1 (Gemini) is scanning...")
+    # PHASE 2: THE COURIER (Sending to Supabase)
+    print("\n🚀 TRANSMITTING DATA TO SUPABASE OMEGA-21 ENGINE...")
     
-    # USING THE MODERN SDK
-    response = client.models.generate_content(
-        model='gemini-2.5-pro',
-        contents=[prompt, img]
-    )
+    payload = {
+        "file_name": "Live_Scan_Alpha",
+        "metadata": {
+            "total_floor_area_m2": area,
+            "perimeter_m": perimeter,
+            "total_doors": doors,
+            "levels": 1,
+            "structural_concrete_m3": area * 0.1, 
+            "has_curved_walls": False
+        }
+    }
     
-    # 4. SHADOW LEARNING LOG
-    print("📂 Saving to Shadow-Vault for custom training...")
-    
-    print("\n✅ EXTRACTION RESULTS:")
-    print(response.text)
+    if SUPABASE_URL and SUPABASE_KEY:
+        try:
+            data, count = supabase.table('drawings').insert(payload).execute()
+            print("✅ DATA SECURE IN SUPABASE VAULT!")
+            print("➡️ Awaiting Edge Function Trigger to generate BOQ...")
+        except Exception as e:
+            print(f"⚠️ Supabase Insert Failed: {e}")
+    else:
+        print("Payload Ready (Add Supabase Keys to transmit):", payload)
 
 if __name__ == "__main__":
-    analyze_blueprint()
+    run_vision_and_uplink()
