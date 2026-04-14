@@ -1,5 +1,8 @@
 flask
 gunicorn
 PyPDF2
-google-genai
 pillow
+google-genai
+openai
+anthropic
+supabase
