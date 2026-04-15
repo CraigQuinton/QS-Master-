@@ -1,6 +1,6 @@
 import os
 import PIL.Image
-import re
+import json
 import traceback
 from flask import Flask, jsonify
 from google import genai
@@ -16,12 +16,10 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SERVICE_KEY")
 gemini_client = genai.Client(api_key=GEMINI_KEY) if GEMINI_KEY else None
 supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY) if SUPABASE_URL and SUPABASE_KEY else None
 
-def extract_numbers(text):
-    numbers = re.findall(r"[-+]?\d*\.\d+|\d+", text)
-    return [float(n) for n in numbers] if numbers else [0.0]
-
-@retry(wait=wait_exponential(multiplier=2, min=2, max=10), stop=stop_after_attempt(3))
+# THE BATTERING RAM: 10 Knocks. Relentless.
+@retry(wait=wait_exponential(multiplier=2, min=4, max=15), stop=stop_after_attempt(10))
 def call_gemini(prompt, img):
+    print("✊ Knocking on Google's door... (Bypassing Bouncer)")
     return gemini_client.models.generate_content(
         model='gemini-2.5-flash',
         contents=[prompt, img]
@@ -44,24 +42,49 @@ def run_scan():
         except Exception as e:
             return f"❌ ERROR: Cannot find or open blueprint image. Details: {e}"
 
+        # THE OMEGA 21 INJECTION PROMPT
         prompt = """
-        Act as a Master QS. Extract the following from this floor plan. 
-        Output ONLY these numbers in this format:
-        Total_Floor_Area_m2: [number]
-        Perimeter_m: [number]
-        Total_Doors: [number]
+        Act as a Master Quantity Surveyor. Analyze this floor plan and extract the core measurements. 
+        If a measurement isn't explicitly written, use your expert QS logic to estimate it based on standard building practices and the footprint area.
+        You MUST return ONLY a raw JSON object. No markdown formatting, no explanations, just the JSON string matching exactly these keys:
+        {
+            "footprint_area_m2": 0,
+            "total_floor_area_m2": 0,
+            "total_wall_area_m2": 0,
+            "roof_area_m2": 0,
+            "total_window_area_m2": 0,
+            "total_doors": 0,
+            "perimeter_m": 0,
+            "levels": 1,
+            "plumbing_points": 0,
+            "electrical_points": 0,
+            "slab_concrete_mpa": 25,
+            "structural_concrete_m3": 0,
+            "steel_tonnage": 0,
+            "demolition_m2": 0,
+            "needs_piling": false,
+            "piling_depth_m": 0,
+            "roof_pitch_degrees": 15,
+            "roof_type": "tiles",
+            "sanitary_fittings": 0,
+            "has_curved_walls": false
+        }
         """
         
         try:
             response = call_gemini(prompt, img)
-            text_response = response.text
-        except Exception as e:
-            return f"❌ VISION ERROR (Google API failed): {str(e)} <br><br> Traceback: {traceback.format_exc()}"
+            text_response = response.text.strip()
             
-        nums = extract_numbers(text_response)
-        area = nums[0] if len(nums) > 0 else 82.5
-        perimeter = nums[1] if len(nums) > 1 else 40
-        doors = nums[2] if len(nums) > 2 else 6
+            # Bulletproof JSON cleaner just in case Google adds formatting
+            if text_response.startswith("```json"):
+                text_response = text_response[7:-3].strip()
+            elif text_response.startswith("```"):
+                text_response = text_response[3:-3].strip()
+                
+            ai_data = json.loads(text_response)
+            
+        except Exception as e:
+            return f"❌ VISION OR PARSING ERROR: {str(e)} <br><br> Traceback: {traceback.format_exc()}"
 
         project_id = None
         try:
@@ -71,31 +94,23 @@ def run_scan():
         except Exception as e:
             pass 
 
+        # Passing the FULL AI JSON directly into the Vault's Metadata!
         payload = {
-            "file_name": "Live_Scan_Alpha",
+            "file_name": "Live_Scan_Omega_21",
             "project_id": project_id, 
             "storage_path": "alpha_scans/floor_plan.jpg",
-            "metadata": {
-                "total_floor_area_m2": area,
-                "perimeter_m": perimeter,
-                "total_doors": doors,
-                "levels": 1,
-                "structural_concrete_m3": area * 0.1, 
-                "has_curved_walls": False
-            }
+            "metadata": ai_data 
         }
         
         try:
             supabase.table('drawings').insert(payload).execute()
             return jsonify({
-                "status": "SUCCESS! BOQ IS GENERATING! 🏆", 
-                "extracted_area": area,
-                "extracted_perimeter": perimeter,
-                "extracted_doors": doors,
-                "database_response": "Saved to Supabase Vault"
+                "status": "SUCCESS! OMEGA 21 BOQ FUEL DELIVERED TO VAULT! 🏆", 
+                "ai_extracted_data": ai_data,
+                "database_response": "Saved to Supabase Vault. Edge Function is calculating BOQ now!"
             })
         except Exception as e:
-            return f"⚠️ SUPABASE INSERT FAILED. The AI read the drawing, but the Vault rejected the save. Error details: {str(e)}"
+            return f"⚠️ SUPABASE INSERT FAILED. Error details: {str(e)}"
 
     except Exception as master_e:
         return f"🚨 CRITICAL SYSTEM ERROR: {str(master_e)} <br><br> Traceback: {traceback.format_exc()}"
