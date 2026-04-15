@@ -74,6 +74,7 @@ def run_scan():
         payload = {
             "file_name": "Live_Scan_Alpha",
             "project_id": project_id, 
+            "storage_path": "alpha_scans/floor_plan.jpg",
             "metadata": {
                 "total_floor_area_m2": area,
                 "perimeter_m": perimeter,
